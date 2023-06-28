@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/csv"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -12,46 +14,65 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// GetPokemonByID handles an HTTP request to retrieve the name of a Pokemon based on the given ID.
-// It expects the ID to be provided as a path parameter in the request URL.
-// If the ID is valid and corresponds to a Pokemon in the CSV data, it returns the Pokemon's name with a status code of 200.
-// If the ID is invalid or no Pokemon with the given ID is found, it returns an appropriate error response with the corresponding status code.
+// PokemonAPI represents the external client for interacting with API.
+type PokemonAPI struct {
+	BaseURL string
+}
+
+// NewPokemonAPI creates a new instance of PokemonAPI with the specified base URL.
+func NewPokemonAPI(baseURL string) *PokemonAPI {
+	return &PokemonAPI{BaseURL: baseURL}
+}
+
+// GetPokemonByID is the handler for the "/pokemon/{id}" endpoint.
+// It retrieves the Pokemon data from the CSV file if it exists,
+// otherwise, it calls the external API to fetch the data, stores it in the CSV file,
+// and returns the result as JSON in the HTTP response.
 func GetPokemonByID(w http.ResponseWriter, r *http.Request) {
-	// Extract the ID from the path parameter in the request URL
 	vars := mux.Vars(r)
 	idStr := vars["id"]
 
-	// Convert the ID string to an integer
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
 	}
 
-	// Read the Pokemon data from the CSV file
-	pokemonList, err := readPokemonCSV("./resources/pokemon.csv")
+	// Check if the Pokemon data exists in the CSV file
+	pokemon, err := GetPokemonFromCSV(id, "./resources/data.csv")
+	if err == nil {
+		// If the data exists in the CSV file, return it as JSON
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(pokemon)
+		return
+	}
+
+	// Create the PokemonAPI client with the base URL of the external API
+	api := NewPokemonAPI("https://pokeapi.co/api/v2")
+
+	// Fetch the Pokemon data from the external API
+	pokemon, err = api.GetPokemonByID(id)
 	if err != nil {
-		log.Println("Error reading CSV:", err)
+		log.Println("Error retrieving Pokemon:", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
-	// Find the Pokemon with the given ID and return its name
-	for _, pokemon := range pokemonList {
-		if pokemon.ID == id {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(pokemon.Name))
-			return
-		}
+	// Store the Pokemon data in the CSV file
+	err = StorePokemonInCSV(pokemon, "./resources/data.csv")
+	if err != nil {
+		log.Println("Error storing Pokemon data in CSV:", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
 
-	// No Pokemon found with the given ID
-	http.Error(w, "Pokemon not found", http.StatusNotFound)
+	// Display the result as JSON
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(pokemon)
 }
 
-func readPokemonCSV(filePath string) ([]model.Pokemon, error) {
-	// Read the CSV file and return the data as a slice of Pokemon structs
-
+// GetPokemonFromCSV retrieves the Pokemon data from the CSV file based on the provided ID.
+func GetPokemonFromCSV(id int, filePath string) (*model.Pokemon, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
@@ -65,99 +86,63 @@ func readPokemonCSV(filePath string) ([]model.Pokemon, error) {
 		return nil, err
 	}
 
-	pokemonList := make([]model.Pokemon, 0, len(records))
 	for _, record := range records {
-		id, err := strconv.Atoi(record[0]) // Assuming ID is at index 0
+		recordID, err := strconv.Atoi(record[0])
 		if err != nil {
 			log.Println("Error parsing ID:", err)
 			continue
 		}
-		pokemon := model.Pokemon{
-			ID:   id,
-			Name: record[1], // Assuming Name is at index 1
+
+		if recordID == id {
+			pokemon := &model.Pokemon{
+				ID:   recordID,
+				Name: record[1],
+			}
+			return pokemon, nil
 		}
-		pokemonList = append(pokemonList, pokemon)
 	}
 
-	return pokemonList, nil
+	return nil, fmt.Errorf("pokemon not found in CSV")
 }
 
-// func NewPokemonAPI(baseURL string) *model.PokemonAPI {
-// 	return &model.PokemonAPI{BaseURL: baseURL}
-// }
+// GetPokemonByID fetches the Pokemon data from the external API based on the provided ID.
+func (c *PokemonAPI) GetPokemonByID(id int) (*model.Pokemon, error) {
+	url := fmt.Sprintf("%s/pokemon/%d", c.BaseURL, id)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
 
-// func (c *model.PokemonAPI) GetPokemonByID(id int) (*model.Pokemon, error) {
-// 	url := fmt.Sprintf("%s/pokemon/%d", c.BaseURL, id)
-// 	resp, err := http.Get(url)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to retrieve Pokemon: %s", resp.Status)
+	}
 
-// 	if resp.StatusCode != http.StatusOK {
-// 		return nil, fmt.Errorf("failed to retrieve Pokemon: %s", resp.Status)
-// 	}
+	pokemon := &model.Pokemon{}
+	err = json.NewDecoder(resp.Body).Decode(pokemon)
+	if err != nil {
+		return nil, err
+	}
 
-// 	pokemon := &model.Pokemon{}
-// 	err = json.NewDecoder(resp.Body).Decode(pokemon)
-// 	if err != nil {
-// 		return nil, err
-// 	}
+	return pokemon, nil
+}
 
-// 	return pokemon, nil
-// }
+// StorePokemonInCSV stores the Pokemon data in the CSV file.
+func StorePokemonInCSV(pokemon *model.Pokemon, filePath string) error {
+	file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
 
-// func StorePokemonInCSV(pokemon *model.Pokemon, filePath string) error {
-// 	file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer file.Close()
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
 
-// 	writer := csv.NewWriter(file)
-// 	defer writer.Flush()
+	record := []string{strconv.Itoa(pokemon.ID), pokemon.Name}
+	err = writer.Write(record)
+	if err != nil {
+		return err
+	}
 
-// 	record := []string{strconv.Itoa(pokemon.ID), pokemon.Name}
-// 	err = writer.Write(record)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	return nil
-// }
-
-// func GetPokemonByIDByExternal(w http.ResponseWriter, r *http.Request) {
-// 	vars := mux.Vars(r)
-// 	idStr := vars["id"]
-
-// 	id, err := strconv.Atoi(idStr)
-// 	if err != nil {
-// 		http.Error(w, "Invalid ID", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	api := NewPokemonAPI("https://pokeapi.co/api/v2")
-// 	pokemon, err := api.GetPokemonByID(id)
-// 	if err != nil {
-// 		log.Println("Error retrieving Pokemon:", err)
-// 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	err = StorePokemonInCSV(pokemon, "./resources/pokemon.csv")
-// 	if err != nil {
-// 		log.Println("Error storing Pokemon data in CSV:", err)
-// 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	// Display the result as JSON
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(pokemon)
-// }
-
-// func main() {
-// 	r := mux.NewRouter()
-// 	r.HandleFunc("/pokemon/{id}", GetPokemonByIDByExternal).Methods("GET")
-// 	log.Fatal(http.ListenAndServe(":8080", r))
-// }
+	return nil
+}
