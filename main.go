@@ -4,9 +4,9 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/gorilla/mux"
-
 	"github.com/linhnguyen124/ondemand-go-bootcamp/api"
+
+	"github.com/gorilla/mux"
 )
 
 func main() {
