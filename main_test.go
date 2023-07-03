@@ -8,58 +8,40 @@ import (
 
 	"github.com/linhnguyen124/ondemand-go-bootcamp/api"
 	"github.com/linhnguyen124/ondemand-go-bootcamp/model"
-
-	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGetPokemonByID(t *testing.T) {
-	// Create a new router
-	router := mux.NewRouter()
-
-	// Register the GetPokemonByID handler
-	router.HandleFunc("/pokemon/{id}", api.GetPokemonByID).Methods("GET")
-
-	// Create a new request with the test URL
-	req, err := http.NewRequest("GET", "/pokemon/1", nil)
-	assert.NoError(t, err, "Failed to create request")
-
-	// Create a new response recorder
-	rec := httptest.NewRecorder()
-
-	// Serve the request and record the response
-	router.ServeHTTP(rec, req)
-
-	// Check the response status code
-	assert.Equal(t, http.StatusOK, rec.Code, "Expected status code %d, got %d", http.StatusOK, rec.Code)
-
-	// Decode the response body into a Pokemon struct
-	var pokemon model.Pokemon
-	err = json.NewDecoder(rec.Body).Decode(&pokemon)
-	assert.NoError(t, err, "Failed to decode response body")
-
-	// Check the Pokemon ID and Name
-	assert.Equal(t, 1, pokemon.ID, "Expected Pokemon ID to be 1")
-	assert.Equal(t, "bulbasaur", pokemon.Name, "Expected Pokemon Name to be Bulbasaur")
+type PokemonResponse struct {
+	PokemonList []*model.Pokemon `json:"pokemonList"`
 }
 
-func TestGetPokemonByID_InvalidID(t *testing.T) {
-	// Create a new router
-	router := mux.NewRouter()
+func TestConcurrentReadFromCSV(t *testing.T) {
+	// Create a test request with query parameters
+	req, err := http.NewRequest("GET", "/pokemon?type=odd&items=10&items_per_worker=5", nil)
+	assert.NoError(t, err)
 
-	// Register the GetPokemonByID handler
-	router.HandleFunc("/pokemon/{id}", api.GetPokemonByID).Methods("GET")
+	// Create a response recorder to capture the API response
+	recorder := httptest.NewRecorder()
 
-	// Create a new request with an invalid ID (non-numeric)
-	req, err := http.NewRequest("GET", "/pokemon/abc", nil)
-	assert.NoError(t, err, "Failed to create request")
-
-	// Create a new response recorder
-	rec := httptest.NewRecorder()
-
-	// Serve the request and record the response
-	router.ServeHTTP(rec, req)
+	// Call the handler function
+	api.ConcurrentReadFromCSV(recorder, req)
 
 	// Check the response status code
-	assert.Equal(t, http.StatusBadRequest, rec.Code, "Expected status code %d, got %d", http.StatusBadRequest, rec.Code)
+	assert.Equal(t, http.StatusOK, recorder.Code)
+
+	// Check the response content type
+	assert.Equal(t, "application/json", recorder.Header().Get("Content-Type"))
+
+	// Parse the response body
+	var response api.PokemonResponse
+	err = json.NewDecoder(recorder.Body).Decode(&response)
+	assert.NoError(t, err)
+
+	// Check the number of items in the response
+	assert.Equal(t, 10, len(response.PokemonList))
+
+	// Check if the IDs of the Pokemon are odd
+	for _, pokemon := range response.PokemonList {
+		assert.True(t, pokemon.ID%2 == 1)
+	}
 }

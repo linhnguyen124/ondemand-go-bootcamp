@@ -5,13 +5,14 @@ import (
 	"net/http"
 
 	"github.com/linhnguyen124/ondemand-go-bootcamp/api"
-
-	"github.com/gorilla/mux"
 )
 
 func main() {
-	r := mux.NewRouter()
-	r.HandleFunc("/pokemon/{id}", api.GetPokemonByID).Methods("GET")
+	http.HandleFunc("/pokemon", api.ConcurrentReadFromCSV)
 
-	log.Fatal(http.ListenAndServe(":8080", r))
+	log.Println("Server started on port 8080")
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		log.Fatal("Server startup failed:", err)
+	}
 }
