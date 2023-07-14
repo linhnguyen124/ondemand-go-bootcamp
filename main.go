@@ -27,6 +27,8 @@ func main() {
 	// Register the endpoints with the router
 	router.HandleFunc("/pokemon/{id}", pokemonHandler.GetPokemonByID).Methods("GET")
 	router.HandleFunc("/pokemon", pokemonHandler.ConcurrentReadFromCSV).Methods("POST")
+	// Add endpoint to consume external API client and store data in CSV file
+	router.HandleFunc("/pokemon/external/consume", pokemonHandler.ConsumeExternalAPI).Methods("GET")
 
 	// Start the server with the router
 	log.Println("Server started on port 8080")

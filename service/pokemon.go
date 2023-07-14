@@ -1,8 +1,11 @@
 package service
 
 import (
+	"encoding/csv"
 	"errors"
 	"log"
+	"os"
+	"strconv"
 	"sync"
 
 	"github.com/linhnguyen124/ondemand-go-bootcamp/model"
@@ -90,4 +93,28 @@ func (s *PokemonService) worker(id, itemsPerWorker int, pokemonType string, poke
 
 func (s *PokemonService) GetPokemonByID(id int) (*model.Pokemon, error) {
 	return s.pokemonRepo.GetPokemonByID(id)
+}
+
+func (s *PokemonService) WritePokemonCSV(pokemonList []model.Pokemon) error {
+	file, err := os.Create("./resources/pokemon.csv")
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	for _, pokemon := range pokemonList {
+		record := []string{
+			strconv.Itoa(pokemon.ID),
+			pokemon.Name,
+		}
+		err := writer.Write(record)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
