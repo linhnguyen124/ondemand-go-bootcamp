@@ -10,7 +10,7 @@ import (
 
 func TestGetPokemonListConcurrently(t *testing.T) {
 	// Create a new PokemonRepository with the test data file
-	pokemonRepo := repository.NewPokemonRepository()
+	pokemonRepo := repository.NewPokemonRepository("../testdata/test_data.csv")
 	pokemonRepo.CSVFilePath = "../testdata/test_data.csv"
 
 	// Create a new PokemonService using the PokemonRepository

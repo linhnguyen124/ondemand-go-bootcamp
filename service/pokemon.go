@@ -87,3 +87,7 @@ func (s *PokemonService) worker(id, itemsPerWorker int, pokemonType string, poke
 		log.Printf("Worker %d: Finish processing", id)
 	}
 }
+
+func (s *PokemonService) GetPokemonByID(id int) (*model.Pokemon, error) {
+	return s.pokemonRepo.GetPokemonByID(id)
+}

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"encoding/csv"
+	"errors"
 	"log"
 	"os"
 	"strconv"
@@ -9,15 +10,17 @@ import (
 	"github.com/linhnguyen124/ondemand-go-bootcamp/model"
 )
 
+var ErrCSVFileNotFound = errors.New("CSV file not found")
+
 // PokemonRepository handles data operations for Pokemon
 type PokemonRepository struct {
 	CSVFilePath string // File path of the CSV data file
 }
 
 // NewPokemonRepository creates a new instance of PokemonRepository
-func NewPokemonRepository() *PokemonRepository {
+func NewPokemonRepository(filePath string) *PokemonRepository {
 	return &PokemonRepository{
-		CSVFilePath: "./resources/data.csv",
+		CSVFilePath: filePath,
 	}
 }
 
@@ -57,4 +60,40 @@ func (r *PokemonRepository) ReadAll() ([]*model.Pokemon, error) {
 	}
 
 	return pokemonList, nil
+}
+
+func (r *PokemonRepository) GetPokemonByID(id int) (*model.Pokemon, error) {
+	file, err := os.Open(r.CSVFilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// File not found error
+			return nil, ErrCSVFileNotFound
+		}
+		// Other file-related error
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records, err := reader.ReadAll()
+	if err != nil {
+		// Error reading CSV data
+		return nil, err
+	}
+
+	for _, record := range records {
+		recordID, err := strconv.Atoi(record[0])
+		if err != nil {
+			continue
+		}
+		if recordID == id {
+			pokemon := &model.Pokemon{
+				ID:   recordID,
+				Name: record[1],
+			}
+			return pokemon, nil
+		}
+	}
+
+	return nil, nil // Pokemon not found
 }
